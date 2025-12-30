@@ -251,9 +251,20 @@ export default function Home() {
           {api?.dezenas?.length ? (
             <div style={{ opacity: 0.85 }}>
               Resultado: <b>{api.dezenas.join(" ")}</b>
+          
               {fonteLabel ? (
-                <span style={{ marginLeft: 8, padding: "2px 8px", border: "1px solid #e5e7eb", borderRadius: 999, fontSize: 12 }}>
+                <span
+                  style={{
+                    marginLeft: 8,
+                    padding: "2px 8px",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: 999,
+                    fontSize: 12
+                  }}
+                >
                   Fonte: {fonteLabel}
+                  {api.concurso ? ` • Concurso ${api.concurso}` : ""}
+                  {api.dataApuracao ? ` • ${api.dataApuracao}` : ""}
                 </span>
               ) : null}
             </div>
