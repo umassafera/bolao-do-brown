@@ -21,18 +21,23 @@ function pad2(n: string | number) {
 }
 
 // 1) GUIDI: api.guidi.dev.br/loteria/megasena/ultimo
-function normalizeGuidi(data: any): Normalized {
-  // alguns retornos vêm como { numero, data, dezenas: [...] } ou similares
+function normalizeGuidi(data: any) {
   const dezenas =
-    (data?.dezenas ?? data?.numeros ?? data?.listaDezenas ?? []).map(pad2);
+    (data?.dezenas ??
+      data?.numeros ??
+      data?.listaDezenas ??
+      []).map((n: string | number) =>
+        String(n).padStart(2, "0")
+      );
 
   return {
     concurso: data?.concurso ?? data?.numero ?? null,
     dataApuracao: data?.data ?? data?.dataApuracao ?? null,
     dezenas,
-    fonte: "guidi",
+    fonte: "guidi"
   };
 }
+
 
 // 2) Heroku loteriascaixa-api: /api/megasena/latest
 function normalizeHeroku(data: any): Normalized {
