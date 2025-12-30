@@ -6,6 +6,7 @@ type ApiResp = {
   concurso: number | null;
   dataApuracao: string | null;
   dezenas: string[];
+  fonte?: string;
   error?: string;
 };
 
@@ -53,7 +54,22 @@ function parseBets(text: string): string[][] {
         .filter((v): v is string => Boolean(v))
     )
     .filter((arr) => arr.length >= 6)
-    .map((arr) => Array.from(new Set(arr))); // remove duplicados na mesma linha
+    .map((arr) => Array.from(new Set(arr)));
+}
+
+function parseManualResult(input: string): { dezenas: string[]; error?: string } {
+  const arr = input
+    .trim()
+    .split(/[,\s;]+/g)
+    .map((p) => normNum(p))
+    .filter((v): v is string => Boolean(v));
+
+  const uniq = Array.from(new Set(arr));
+
+  if (uniq.length !== 6) {
+    return { dezenas: [], error: "Informe exatamente 6 dezenas válidas (1–60), sem repetição." };
+  }
+  return { dezenas: uniq.sort(), error: undefined };
 }
 
 type BetResult = {
@@ -62,14 +78,20 @@ type BetResult = {
   hits: number;
   hitNums: string[];
   category: "Sena" | "Quina" | "Quadra" | "Nada";
-  isRich: boolean; // Sena
+  isRich: boolean;
 };
 
 export default function Home() {
   const [text, setText] = useState(DEFAULT_BOLAO);
+
   const [api, setApi] = useState<ApiResp | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // modo manual
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualInput, setManualInput] = useState("");
+  const [manualErr, setManualErr] = useState<string | null>(null);
 
   const bets = useMemo(() => parseBets(text), [text]);
 
@@ -81,8 +103,7 @@ export default function Home() {
       const hitNums = nums.filter((n) => drawn.has(n));
       const hits = hitNums.length;
 
-      // Regra importante p/ jogos com >6 números:
-      // - Se todas as 6 dezenas sorteadas estiverem dentro do seu conjunto, você tem SENA (pelo menos uma).
+      // Para jogos >6 números: Sena se contém TODAS as 6 dezenas sorteadas
       const isSena = api.dezenas.every((d) => nums.includes(d));
       const category: BetResult["category"] =
         isSena ? "Sena" : hits >= 5 ? "Quina" : hits >= 4 ? "Quadra" : "Nada";
@@ -102,14 +123,14 @@ export default function Home() {
   const quinaCount = results.filter((r) => r.category === "Quina").length;
   const quadraCount = results.filter((r) => r.category === "Quadra").length;
 
-  async function check() {
+  async function checkOnline() {
     setLoading(true);
     setErr(null);
     try {
       const res = await fetch("/api/megasena", { cache: "no-store" });
       const data = (await res.json()) as ApiResp;
       if (!res.ok || (data as any).error) {
-        setApi(data);
+        setApi(null);
         setErr((data as any).error ?? "Falha ao buscar resultado.");
       } else {
         setApi(data);
@@ -121,11 +142,45 @@ export default function Home() {
     }
   }
 
+  function applyManual() {
+    const parsed = parseManualResult(manualInput);
+    if (parsed.error) {
+      setManualErr(parsed.error);
+      return;
+    }
+    setManualErr(null);
+    setErr(null);
+
+    setApi({
+      concurso: null,
+      dataApuracao: null,
+      dezenas: parsed.dezenas,
+      fonte: "manual",
+    });
+
+    setManualOpen(false);
+  }
+
+  function clearResult() {
+    setApi(null);
+    setErr(null);
+    setManualErr(null);
+  }
+
+  const fonteLabel =
+    api?.fonte === "manual"
+      ? "Manual"
+      : api?.fonte
+      ? `Online (${api.fonte})`
+      : api
+      ? "Online"
+      : null;
+
   return (
     <main style={{ maxWidth: 980, margin: "40px auto", padding: 20, fontFamily: "ui-sans-serif, system-ui" }}>
       <h1 style={{ fontSize: 34, marginBottom: 6 }}>Bolão do Brown 💸🍀</h1>
       <p style={{ marginTop: 0, opacity: 0.8 }}>
-        Cole os jogos (1 linha = 1 aposta, mínimo 6 números). Eu comparo com o último resultado.
+        Cole os jogos (1 linha = 1 aposta). Você pode checar online ou inserir o resultado manualmente.
       </p>
 
       <section style={{ display: "grid", gap: 10, padding: 16, border: "1px solid #e5e7eb", borderRadius: 12 }}>
@@ -146,7 +201,7 @@ export default function Home() {
 
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <button
-            onClick={check}
+            onClick={checkOnline}
             disabled={loading}
             style={{
               padding: "10px 14px",
@@ -158,7 +213,35 @@ export default function Home() {
               fontWeight: 700,
             }}
           >
-            {loading ? "Consultando..." : "Verificar resultado"}
+            {loading ? "Consultando..." : "Verificar (online)"}
+          </button>
+
+          <button
+            onClick={() => setManualOpen((v) => !v)}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid #d1d5db",
+              background: "white",
+              cursor: "pointer",
+              fontWeight: 700,
+            }}
+          >
+            Inserir resultado manual
+          </button>
+
+          <button
+            onClick={clearResult}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid #f3f4f6",
+              background: "#f3f4f6",
+              cursor: "pointer",
+              fontWeight: 700,
+            }}
+          >
+            Limpar resultado
           </button>
 
           <div style={{ opacity: 0.8 }}>
@@ -166,12 +249,61 @@ export default function Home() {
           </div>
 
           {api?.dezenas?.length ? (
-            <div style={{ opacity: 0.8 }}>
-              Sorteio: <b>{api.concurso ?? "—"}</b> ({api.dataApuracao ?? "—"}) — Dezenas:{" "}
-              <b>{api.dezenas.join(" ")}</b>
+            <div style={{ opacity: 0.85 }}>
+              Resultado: <b>{api.dezenas.join(" ")}</b>
+              {fonteLabel ? (
+                <span style={{ marginLeft: 8, padding: "2px 8px", border: "1px solid #e5e7eb", borderRadius: 999, fontSize: 12 }}>
+                  Fonte: {fonteLabel}
+                </span>
+              ) : null}
             </div>
           ) : null}
         </div>
+
+        {manualOpen && (
+          <div style={{ padding: 12, borderRadius: 10, border: "1px solid #e5e7eb", background: "#fafafa" }}>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>Digite as 6 dezenas sorteadas</div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <input
+                value={manualInput}
+                onChange={(e) => setManualInput(e.target.value)}
+                placeholder="Ex: 04 06 13 21 26 28"
+                style={{
+                  minWidth: 280,
+                  flex: 1,
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #d1d5db",
+                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                }}
+              />
+              <button
+                onClick={applyManual}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  border: "1px solid #111827",
+                  background: "#111827",
+                  color: "white",
+                  cursor: "pointer",
+                  fontWeight: 700,
+                }}
+              >
+                Usar este resultado
+              </button>
+            </div>
+
+            {manualErr && (
+              <div style={{ marginTop: 10, padding: 10, borderRadius: 10, background: "#fee2e2", border: "1px solid #fecaca" }}>
+                {manualErr}
+              </div>
+            )}
+
+            <div style={{ marginTop: 8, opacity: 0.65, fontSize: 13 }}>
+              Aceita espaço, vírgula ou ponto-e-vírgula. Ex: <code>04,06,13,21,26,28</code>
+            </div>
+          </div>
+        )}
 
         {err && (
           <div style={{ padding: 10, borderRadius: 10, background: "#fee2e2", border: "1px solid #fecaca" }}>
@@ -184,7 +316,7 @@ export default function Home() {
         <h2 style={{ marginTop: 0, marginBottom: 8 }}>Resultado do Bolão</h2>
 
         {!api ? (
-          <p style={{ opacity: 0.8 }}>Clique em “Verificar resultado”.</p>
+          <p style={{ opacity: 0.8 }}>Use “Verificar (online)” ou “Inserir resultado manual”.</p>
         ) : (
           <>
             <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginBottom: 10 }}>
@@ -237,7 +369,7 @@ export default function Home() {
             </div>
 
             <p style={{ opacity: 0.65, marginTop: 10 }}>
-              Nota: para apostas com mais de 6 números, “SENA” aqui significa que as 6 dezenas sorteadas estão dentro da sua linha (pelo menos 1 combinação vencedora).
+              Nota: para apostas com mais de 6 números, “SENA” significa que as 6 dezenas sorteadas estão dentro da sua linha (ao menos 1 combinação vencedora).
             </p>
           </>
         )}
