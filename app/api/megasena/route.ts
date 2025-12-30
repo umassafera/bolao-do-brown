@@ -2,15 +2,16 @@ import { NextResponse } from "next/server";
 
 export async function GET() {
   try {
-    const url = "https://servicebus2.caixa.gov.br/portaldeloterias/api/megasena"; // :contentReference[oaicite:2]{index=2}
-    const res = await fetch(url, {
-      next: { revalidate: 60 },
-      headers: { accept: "application/json" },
-    });
+    const res = await fetch(
+      "https://brasilapi.com.br/api/loterias/v1/megasena",
+      {
+        next: { revalidate: 60 }
+      }
+    );
 
     if (!res.ok) {
       return NextResponse.json(
-        { error: "Falha ao consultar API da CAIXA", status: res.status },
+        { error: "Falha ao consultar BrasilAPI" },
         { status: 502 }
       );
     }
@@ -18,13 +19,16 @@ export async function GET() {
     const data = await res.json();
 
     return NextResponse.json({
-      concurso: data?.numero ?? null,
-      dataApuracao: data?.dataApuracao ?? null,
-      dezenas: (data?.listaDezenas ?? []) as string[],
+      concurso: data.concurso,
+      dataApuracao: data.data,
+      dezenas: data.dezenas
     });
-  } catch (e: any) {
+  } catch (err: any) {
     return NextResponse.json(
-      { error: "Erro inesperado ao consultar a API", details: String(e?.message ?? e) },
+      {
+        error: "Erro ao consultar resultado da Mega-Sena",
+        details: err?.message ?? String(err)
+      },
       { status: 500 }
     );
   }
